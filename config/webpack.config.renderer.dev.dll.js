@@ -1,97 +1,119 @@
 /**
- * Build config for electron renderer process
+ * Builds the DLL for development electron renderer process
  */
 
-import path from 'path';
 import webpack from 'webpack';
-import ExtractTextPlugin from 'extract-text-webpack-plugin';
-import { BundleAnalyzerPlugin } from 'webpack-bundle-analyzer';
+import path from 'path';
 import merge from 'webpack-merge';
-import UglifyJSPlugin from 'uglifyjs-webpack-plugin';
 import baseConfig from './webpack.config.base';
-import CheckNodeEnv from './internals/scripts/CheckNodeEnv';
+import { dependencies } from '../package.json';
+import CheckNodeEnv from '../internals/scripts/CheckNodeEnv';
 
-CheckNodeEnv('production');
+CheckNodeEnv('development');
+
+const dist = path.resolve(process.cwd(), 'dll');
 
 export default merge.smart(baseConfig, {
-  devtool: 'source-map',
+  context: process.cwd(),
+
+  devtool: 'eval',
 
   target: 'electron-renderer',
 
-  entry: './app/index',
+  externals: ['fsevents', 'crypto-browserify'],
 
-  output: {
-    path: path.join(__dirname, 'app/dist'),
-    publicPath: './dist/',
-    filename: 'renderer.prod.js'
-  },
-
+  /**
+   * Use `module` from `webpack.config.renderer.dev.js`
+   */
   module: {
     rules: [
-      // Extract all .global.css to style.css as is
+      {
+        test: /\.jsx?$/,
+        exclude: /node_modules/,
+        use: {
+          loader: 'babel-loader',
+          options: {
+            cacheDirectory: true,
+            plugins: [
+              // Here, we include babel plugins that are only required for the
+              // renderer process. The 'transform-*' plugins must be included
+              // before react-hot-loader/babel
+              'transform-class-properties',
+              'transform-es2015-classes',
+              'react-hot-loader/babel'
+            ],
+          }
+        }
+      },
       {
         test: /\.global\.css$/,
-        use: ExtractTextPlugin.extract({
-          publicPath: './',
-          use: {
+        use: [
+          {
+            loader: 'style-loader'
+          },
+          {
             loader: 'css-loader',
             options: {
-              minimize: true,
-            }
-          },
-          fallback: 'style-loader',
-        })
+              sourceMap: true,
+            },
+          }
+        ]
       },
-      // Pipe other styles through css modules and append to style.css
       {
         test: /^((?!\.global).)*\.css$/,
-        use: ExtractTextPlugin.extract({
-          use: {
+        use: [
+          {
+            loader: 'style-loader'
+          },
+          {
             loader: 'css-loader',
             options: {
               modules: true,
-              minimize: true,
+              sourceMap: true,
               importLoaders: 1,
               localIdentName: '[name]__[local]__[hash:base64:5]',
             }
-          }
-        }),
+          },
+        ]
       },
-      // Add SASS support  - compile all .global.scss files and pipe it to style.css
+      // SASS support - compile all .global.scss files and pipe it to style.css
       {
         test: /\.global\.(scss|sass)$/,
-        use: ExtractTextPlugin.extract({
-          use: [
-            {
-              loader: 'css-loader',
-              options: {
-                minimize: true,
-              }
+        use: [
+          {
+            loader: 'style-loader'
+          },
+          {
+            loader: 'css-loader',
+            options: {
+              sourceMap: true,
             },
-            {
-              loader: 'sass-loader'
-            }
-          ],
-          fallback: 'style-loader',
-        })
+          },
+          {
+            loader: 'sass-loader'
+          }
+        ]
       },
-      // Add SASS support  - compile all other .scss files and pipe it to style.css
+      // SASS support - compile all other .scss files and pipe it to style.css
       {
         test: /^((?!\.global).)*\.(scss|sass)$/,
-        use: ExtractTextPlugin.extract({
-          use: [{
+        use: [
+          {
+            loader: 'style-loader'
+          },
+          {
             loader: 'css-loader',
             options: {
               modules: true,
-              minimize: true,
+              sourceMap: true,
               importLoaders: 1,
               localIdentName: '[name]__[local]__[hash:base64:5]',
             }
           },
           {
             loader: 'sass-loader'
-          }]
-        }),
+          }
+        ]
       },
       // WOFF Font
       {
@@ -150,7 +172,27 @@ export default merge.smart(baseConfig, {
     ]
   },
 
+  entry: {
+    renderer: (
+      Object
+        .keys(dependencies || {})
+        .filter(dependency => dependency !== 'font-awesome')
+    )
+  },
+
+  output: {
+    library: 'renderer',
+    path: dist,
+    filename: '[name].dev.dll.js',
+    libraryTarget: 'var'
+  },
+
   plugins: [
+    new webpack.DllPlugin({
+      path: path.join(dist, '[name].json'),
+      name: '[name]',
+    }),
+
     /**
      * Create global constants which can be configured at compile time.
      *
@@ -161,19 +203,17 @@ export default merge.smart(baseConfig, {
      * development checks
      */
     new webpack.EnvironmentPlugin({
-      NODE_ENV: 'production'
+      NODE_ENV: 'development'
     }),
 
-    new UglifyJSPlugin({
-      parallel: true,
-      sourceMap: true
-    }),
-
-    new ExtractTextPlugin('style.css'),
-
-    new BundleAnalyzerPlugin({
-      analyzerMode: process.env.OPEN_ANALYZER === 'true' ? 'server' : 'disabled',
-      openAnalyzer: process.env.OPEN_ANALYZER === 'true'
-    }),
+    new webpack.LoaderOptionsPlugin({
+      debug: true,
+      options: {
+        context: path.resolve(process.cwd(), 'app'),
+        output: {
+          path: path.resolve(process.cwd(), 'dll'),
+        },
+      },
+    })
   ],
 });

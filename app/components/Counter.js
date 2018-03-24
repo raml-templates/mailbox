@@ -1,7 +1,9 @@
 // @flow
 import React, { Component } from 'react';
 import { Link } from 'react-router-dom';
-import styles from './Counter.css';
+import styles from './Counter';
+
+import NavBar from './NavBar';
 
 type Props = {
   increment: () => void,
@@ -20,11 +22,7 @@ export default class Counter extends Component<Props> {
     } = this.props;
     return (
       <div>
-        <div className={styles.backButton} data-tid="backButton">
-          <Link to="/">
-            <i className="fa fa-arrow-left fa-3x" />
-          </Link>
-        </div>
+        <NavBar />
         <div className={`counter ${styles.counter}`} data-tid="counter">
           {counter}
         </div>
